@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="pt-br" class="">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gestão de Aulas</title>
+
+  <!-- Manifest PWA + cor do tema (para barra do navegador) -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#4c1d95">
+
+  <!-- Tailwind e Chart.js via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Aplica o tema salvo antes de renderizar (evita flash) -->
+  <script>
+    (function () {
+      const saved = localStorage.getItem('theme') || 'light';
+      if (saved === 'dark') document.documentElement.classList.add('dark');
+    })();
+  </script>
+
+  <style>
+    html { scroll-behavior: smooth; }
+    * { -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100">
+
+  <!-- NAV -->
+  <nav class="bg-purple-700 text-white px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 dark:bg-purple-800">
+    <div class="flex items-center justify-between gap-3">
+      <h1 class="text-xl font-bold">Gestão de Aulas</h1>
+      <button id="btnTheme" class="px-3 py-1 rounded bg-black/20 hover:bg-black/30 text-sm" onclick="toggleTheme()">
+        🌙 Tema
+      </button>
+    </div>
+    <ul class="flex flex-wrap gap-4">
+      <li><a href="#" onclick="mostrarSecao('agenda')" class="hover:underline">Agenda</a></li>
+      <li><a href="#" onclick="mostrarSecao('alunos')" class="hover:underline">Alunos</a></li>
+      <li><a href="#" onclick="mostrarSecao('relatorios')" class="hover:underline">Relatórios</a></li>
+      <li><a href="#" onclick="mostrarSecao('evolucao')" class="hover:underline">Evolução</a></li>
+      <li><a href="#" onclick="mostrarSecao('backup')" class="hover:underline">Backup</a></li>
+    </ul>
+  </nav>
+  <!-- AGENDA -->
+  <section id="secao-agenda" class="p-6">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+      <h2 class="text-2xl font-semibold text-purple-700 dark:text-purple-300">Agenda de Aulas</h2>
+      <div class="flex flex-wrap gap-2">
+        <select id="filtroAluno" class="border rounded px-3 py-2 dark:bg-gray-800 dark:border-gray-700" onchange="gerarCalendario(); atualizarListaMes()">
+          <option value="__todos__">Todos os alunos</option>
+        </select>
+        <select id="filtroStatus" class="border rounded px-3 py-2 dark:bg-gray-800 dark:border-gray-700" onchange="gerarCalendario(); atualizarListaMes()">
+          <option value="__todos__">Todos os status</option>
+          <option>Marcada</option>
+          <option>Dada</option>
+          <option>Cancelada</option>
+        </select>
+        <button onclick="exportarCSVDoMes()" class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded">Exportar mês (CSV)</button>
+        <button onclick="lembrarProximaAulaWhatsApp()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded">Lembrar Próxima (WhatsApp)</button>
+        <button onclick="abrirModal('modalAula')" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded">+ Nova Aula</button>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between mb-2">
+      <button onclick="mudarMes(-1)" class="px-2 py-1 bg-gray-300 rounded dark:bg-gray-700">◀</button>
+      <h3 id="mesAno" class="text-lg font-semibold"></h3>
+      <button onclick="mudarMes(1)" class="px-2 py-1 bg-gray-300 rounded dark:bg-gray-700">▶</button>
+    </div>
+
+    <div class="grid grid-cols-7 text-center font-bold mb-2">
+      <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div>
+    </div>
+    <div id="calendario" class="grid grid-cols-7 gap-2 mb-6"></div>
+
+    <!-- LISTA DO MÊS -->
+    <div class="bg-white rounded shadow p-4 dark:bg-gray-800">
+      <div class="flex items-center justify-between mb-3">
+        <h4 class="text-lg font-semibold text-purple-700 dark:text-purple-300">Aulas do mês</h4>
+        <span id="contagemMes" class="text-sm text-gray-600 dark:text-gray-300"></span>
+      </div>
+      <div id="listaMes" class="divide-y dark:divide-gray-700"></div>
+    </div>
+  </section>
+
+  <!-- ALUNOS -->
+  <section id="secao-alunos" class="hidden p-6">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-2xl font-semibold text-purple-700 dark:text-purple-300">Alunos</h2>
+      <button onclick="abrirModal('modalAluno')" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded">+ Novo Aluno</button>
+    </div>
+    <div id="listaAlunos" class="space-y-2"></div>
+  </section>
+
+  <!-- RELATÓRIOS -->
+  <section id="secao-relatorios" class="hidden p-6">
+    <h2 class="text-2xl font-semibold text-purple-700 mb-3 dark:text-purple-300">Relatórios</h2>
+
+    <div class="flex items-center gap-3 mb-4">
+      <label class="text-sm">Ano:</label>
+      <select id="selectAno" class="border rounded px-3 py-2 dark:bg-gray-800 dark:border-gray-700" onchange="atualizarRelatorios()"></select>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+      <div class="bg-white p-4 rounded shadow dark:bg-gray-800">
+        <p class="text-sm text-gray-500 dark:text-gray-300">Aulas Dadas</p>
+        <p id="cardAulasDadas" class="text-2xl font-bold">0</p>
+      </div>
+      <div class="bg-white p-4 rounded shadow dark:bg-gray-800">
+        <p class="text-sm text-gray-500 dark:text-gray-300">Aulas Canceladas</p>
+        <p id="cardAulasCanceladas" class="text-2xl font-bold">0</p>
+      </div>
+      <div class="bg-white p-4 rounded shadow dark:bg-gray-800">
+        <p class="text-sm text-gray-500 dark:text-gray-300">Alunos Ativos</p>
+        <p id="cardAlunosAtivos" class="text-2xl font-bold">0</p>
+      </div>
+      <div class="bg-white p-4 rounded shadow flex items-center justify-between dark:bg-gray-800">
+        <div>
+          <p class="text-sm text-gray-500 dark:text-gray-300">Receita Anual</p>
+          <p id="cardReceitaAnual" class="text-2xl font-bold">R$ 0,00</p>
+        </div>
+        <button class="text-gray-500 dark:text-gray-300" onclick="toggleOlho('cardReceitaAnual')">👁</button>
+      </div>
+      <div class="bg-white p-4 rounded shadow flex items-center justify-between dark:bg-gray-800">
+        <div>
+          <p class="text-sm text-gray-500 dark:text-gray-300">Receita Mensal</p>
+          <p id="cardReceitaMensal" class="text-2xl font-bold">R$ 0,00</p>
+        </div>
+        <button class="text-gray-500 dark:text-gray-300" onclick="toggleOlho('cardReceitaMensal')">👁</button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="bg-white p-4 rounded shadow dark:bg-gray-800">
+        <p class="font-semibold mb-2">Aulas por Mês</p>
+        <canvas id="chartAulasMes"></canvas>
+      </div>
+      <div class="bg-white p-4 rounded shadow dark:bg-gray-800">
+        <p class="font-semibold mb-2">Receita Mensal</p>
+        <canvas id="chartReceitaMes"></canvas>
+      </div>
+      <div class="bg-white p-4 rounded shadow dark:bg-gray-800">
+        <p class="font-semibold mb-2">Distribuição de Status das Aulas</p>
+        <canvas id="chartStatus"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- EVOLUÇÃO DOS ALUNOS -->
+  <section id="secao-evolucao" class="hidden p-6">
+    <h2 class="text-2xl font-semibold text-purple-700 mb-4 dark:text-purple-300">Evolução dos Alunos</h2>
+    <div class="bg-white rounded shadow p-4 mb-4 dark:bg-gray-800">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+        <div class="md:col-span-2">
+          <label class="text-sm">Nova Anotação</label>
+          <textarea id="notaTexto" rows="3" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" placeholder="Escreva aqui a evolução, feedbacks, pontos a melhorar..."></textarea>
+        </div>
+        <div>
+          <label class="text-sm">Selecionar Aluno</label>
+          <select id="notaAluno" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700">
+            <option value="__todos__">Todos os alunos</option>
+          </select>
+        </div>
+        <div class="flex items-end">
+          <button onclick="salvarNota()" class="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded">Salvar Anotação</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label class="text-sm">Filtrar por Aluno</label>
+          <select id="filtroNotaAluno" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" onchange="listarNotas()">
+            <option value="__todos__">Todos os alunos</option>
+          </select>
+        </div>
+        <div class="md:col-span-2">
+          <label class="text-sm">Buscar nas anotações</label>
+          <input id="buscaNotas" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" placeholder="Digite para buscar..." oninput="listarNotas()" />
+        </div>
+      </div>
+    </div>
+    <div id="listaNotas" class="space-y-2"></div>
+  </section>
+
+  <!-- BACKUP -->
+  <section id="secao-backup" class="hidden p-6">
+    <h2 class="text-2xl font-semibold text-purple-700 mb-4 dark:text-purple-300">Backup</h2>
+    <div class="bg-white rounded shadow p-4 mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between dark:bg-gray-800">
+      <div class="flex items-center gap-3">
+        <button onclick="exportarBackup()" class="bg-blue-600 text-white px-4 py-2 rounded">Exportar Dados</button>
+        <button onclick="document.getElementById('importBackupInput').click()" class="bg-emerald-600 text-white px-4 py-2 rounded">Recuperar Backup</button>
+        <input type="file" id="importBackupInput" accept=".json" class="hidden" onchange="importarBackup(event)" />
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input id="chkAutoExport" type="checkbox" class="w-4 h-4" onchange="toggleAutoExport(this.checked)" />
+        Auto-exportar ao sair (gera download automático do backup)
+      </label>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-300">Para usar em outro dispositivo, exporte aqui e depois importe no novo aparelho.</p>
+  </section>
+
+  <!-- MODAL ALUNO -->
+  <div id="modalAluno" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center">
+    <div class="bg-white rounded-lg shadow-lg w-[520px] p-6 dark:bg-gray-800">
+      <h3 class="text-xl font-semibold mb-4">Cadastro de Aluno</h3>
+      <form id="formAluno" onsubmit="salvarAluno(event)" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="md:col-span-2">
+          <label class="text-sm">Nome *</label>
+          <input id="nomeAluno" required class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" placeholder="Ex: Maria Silva" />
+        </div>
+        <div>
+          <label class="text-sm">Telefone (WhatsApp)</label>
+          <input id="telefoneAluno" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" placeholder="DDD + número" />
+        </div>
+        <div>
+          <label class="text-sm">Email</label>
+          <input id="emailAluno" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" placeholder="exemplo@email.com" />
+        </div>
+        <div>
+          <label class="text-sm">Status</label>
+          <select id="statusAluno" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700">
+            <option>Ativo</option>
+            <option>Inativo</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-sm">Tipo de Aula</label>
+          <select id="tipoAluno" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700">
+            <option>Pacote</option>
+            <option>Avulsa</option>
+            <option>Individual</option>
+            <option>Casal</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-sm">Total de Aulas no Pacote</label>
+          <input id="totalPacote" type="number" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" placeholder="Ex: 10" />
+        </div>
+        <div>
+          <label class="text-sm">Aulas Feitas</label>
+          <input id="aulasFeitas" type="number" class="w-full border p-2 rounded bg-gray-100 dark:bg-gray-900 dark:border-gray-700" value="0" readonly />
+        </div>
+        <div class="md:col-span-2">
+          <label class="text-sm">Observações</label>
+          <textarea id="obsAluno" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" placeholder="Preferências, detalhes etc."></textarea>
+        </div>
+        <div class="md:col-span-2 flex justify-end gap-2 mt-2">
+          <button type="button" onclick="fecharModal('modalAluno')" class="px-4 py-2 rounded border dark:border-gray-600">Cancelar</button>
+          <button type="submit" class="px-4 py-2 rounded bg-purple-600 text-white">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL AULA (criar/editar) -->
+  <div id="modalAula" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center">
+    <div class="bg-white rounded-lg shadow-lg w-[520px] p-6 dark:bg-gray-800">
+      <h3 id="tituloModalAula" class="text-xl font-semibold mb-4">Nova Aula</h3>
+      <form id="formAula" onsubmit="salvarAula(event)" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <input type="hidden" id="idAula" />
+        <div>
+          <label class="text-sm">Data</label>
+          <input id="dataAula" type="date" required class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" />
+        </div>
+        <div>
+          <label class="text-sm">Hora</label>
+          <input id="horaAula" type="time" required class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="text-sm">Aluno</label>
+          <select id="alunoAula" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700"></select>
+        </div>
+        <div>
+          <label class="text-sm">Estilo</label>
+          <input id="estiloAula" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" placeholder="Ex: Forró Universitário" />
+        </div>
+        <div>
+          <label class="text-sm">Valor (R$)</label>
+          <input id="valorAula" type="number" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700" placeholder="Ex: 100" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="text-sm">Observações</label>
+          <textarea id="obsAula" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700"></textarea>
+        </div>
+        <div>
+          <label class="text-sm">Status</label>
+          <select id="statusAula" class="w-full border p-2 rounded dark:bg-gray-900 dark:border-gray-700">
+            <option>Marcada</option>
+            <option>Dada</option>
+            <option>Cancelada</option>
+          </select>
+        </div>
+        <div class="md:col-span-2 flex flex-wrap gap-2 mt-2">
+          <button type="button" onclick="lembrarAulaWhatsApp()" class="px-3 py-2 rounded bg-green-600 text-white">WhatsApp Lembrete</button>
+          <span id="hintSemTelefone" class="text-sm text-gray-500 dark:text-gray-300 hidden">Cadastre o telefone do aluno para usar o WhatsApp.</span>
+          <div class="flex-1"></div>
+          <button type="button" onclick="fecharModal('modalAula')" class="px-4 py-2 rounded border dark:border-gray-600">Cancelar</button>
+          <button type="submit" class="px-4 py-2 rounded bg-purple-600 text-white">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <!-- SCRIPTS -->
+  <script>
+    // ======= Estado =======
+    let alunos = JSON.parse(localStorage.getItem("alunos")) || [];
+    let aulas  = JSON.parse(localStorage.getItem("aulas"))  || [];
+    let notas  = JSON.parse(localStorage.getItem("notas"))  || [];
+    let dataAtual = new Date();
+    let cAulasMes, cReceitaMes, cStatus;
+
+    // ======= Tema =======
+    function toggleTheme(){
+      const root = document.documentElement;
+      const isDark = root.classList.toggle('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    }
+
+    // ======= Persistência =======
+    function salvar() {
+      localStorage.setItem("alunos", JSON.stringify(alunos));
+      localStorage.setItem("aulas", JSON.stringify(aulas));
+      localStorage.setItem("notas", JSON.stringify(notas));
+      atualizarRelatorios();
+    }
+
+    // ======= Navegação =======
+    function mostrarSecao(secao) {
+      ["agenda","alunos","relatorios","evolucao","backup"].forEach(s=>{
+        document.getElementById("secao-"+s).classList.add("hidden");
+      });
+      document.getElementById("secao-"+secao).classList.remove("hidden");
+      if(secao==="agenda"){ gerarCalendario(); atualizarListaMes(); }
+      if(secao==="alunos") atualizarListaAlunos();
+      if(secao==="relatorios"){ popularAnos(); atualizarRelatorios(); }
+      if(secao==="evolucao"){ popularSelectNotas(); listarNotas(); }
+    }
+
+    function abrirModal(id){ document.getElementById(id).classList.remove("hidden"); }
+    function fecharModal(id){ document.getElementById(id).classList.add("hidden"); limparFormAula(); }
+
+    // ======= Utils =======
+    function novaId() { return 'id_' + Math.random().toString(36).slice(2) + Date.now(); }
+    function toBRL(n){ return (n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+    function formatarDataHoraBR(dataStr, horaStr){
+      try {
+        const dt = new Date(`${dataStr}T${horaStr}:00`);
+        const opts = { weekday:'short', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' };
+        return dt.toLocaleString('pt-BR', opts).replace(',', '');
+      } catch { return `${dataStr} ${horaStr}`; }
+    }
+
+    // ======= Alunos =======
+    function salvarAluno(e){
+      e.preventDefault();
+      const aluno = {
+        nome:        document.getElementById("nomeAluno").value.trim(),
+        telefone:    document.getElementById("telefoneAluno").value.trim(),
+        email:       document.getElementById("emailAluno").value.trim(),
+        status:      document.getElementById("statusAluno").value,
+        tipo:        document.getElementById("tipoAluno").value,
+        totalPacote: parseInt(document.getElementById("totalPacote").value)||0,
+        aulasFeitas: parseInt(document.getElementById("aulasFeitas").value)||0,
+        obs:         document.getElementById("obsAluno").value.trim()
+      };
+      alunos.push(aluno);
+      salvar();
+      fecharModal("modalAluno");
+      atualizarListaAlunos();
+      e.target.reset();
+    }
+
+    function excluirAluno(idx){
+      if(!confirm("Excluir este aluno?")) return;
+      const nome = alunos[idx].nome;
+      aulas = aulas.filter(a=>a.aluno !== nome);
+      notas = notas.filter(n=>n.aluno !== nome);
+      alunos.splice(idx,1);
+      salvar();
+      atualizarListaAlunos();
+      gerarCalendario();
+      atualizarListaMes();
+      listarNotas();
+    }
+
+    function atualizarListaAlunos(){
+      const lista = document.getElementById("listaAlunos");
+      lista.innerHTML = "";
+      alunos.forEach((a,i)=>{
+        const card = document.createElement("div");
+        card.className = "bg-white p-3 rounded shadow flex justify-between items-center dark:bg-gray-800";
+        card.innerHTML = `
+          <div>
+            <b>${a.nome}</b> <span class="text-xs text-gray-500">(${a.status})</span><br/>
+            <span class="text-sm text-gray-600 dark:text-gray-300">${a.tipo}</span> •
+            <span class="text-sm">Pacote: ${a.totalPacote||0}</span> •
+            <span class="text-sm">Feitas: ${a.aulasFeitas||0}</span>
+          </div>
+          <button onclick="excluirAluno(${i})" class="text-red-600 hover:underline">Excluir</button>
+        `;
+        lista.appendChild(card);
+      });
+
+      // Popular selects (agenda + evolução)
+      const selAula = document.getElementById("alunoAula");
+      const filtro = document.getElementById("filtroAluno");
+      const notaAluno = document.getElementById("notaAluno");
+      const filtroNotaAluno = document.getElementById("filtroNotaAluno");
+      if(selAula){ selAula.innerHTML = ""; }
+      if(filtro){ filtro.innerHTML = `<option value="__todos__">Todos os alunos</option>`; }
+      if(notaAluno){ notaAluno.innerHTML = `<option value="__todos__">Todos os alunos</option>`; }
+      if(filtroNotaAluno){ filtroNotaAluno.innerHTML = `<option value="__todos__">Todos os alunos</option>`; }
+
+      alunos.forEach(a => {
+        if(selAula) selAula.innerHTML += `<option value="${a.nome}">${a.nome}</option>`;
+        if(filtro) filtro.innerHTML += `<option value="${a.nome}">${a.nome}</option>`;
+        if(notaAluno) notaAluno.innerHTML += `<option value="${a.nome}">${a.nome}</option>`;
+        if(filtroNotaAluno) filtroNotaAluno.innerHTML += `<option value="${a.nome}">${a.nome}</option>`;
+      });
+    }
+
+    // ======= Aulas =======
+    function limparFormAula(){
+      const id = document.getElementById("idAula");
+      if (id) id.value = "";
+      const titulo = document.getElementById("tituloModalAula");
+      if (titulo) titulo.innerText = "Nova Aula";
+      const form = document.getElementById("formAula");
+      if (form) form.reset();
+      const hint = document.getElementById("hintSemTelefone");
+      if (hint) hint.classList.add("hidden");
+    }
+
+    function salvarAula(e){
+      e.preventDefault();
+      const id     = document.getElementById("idAula").value || novaId();
+      const isEdit = !!document.getElementById("idAula").value;
+
+      const data   = document.getElementById("dataAula").value;
+      const hora   = document.getElementById("horaAula").value;
+      const aluno  = document.getElementById("alunoAula").value;
+      const estilo = document.getElementById("estiloAula").value.trim();
+      const valor  = parseFloat(document.getElementById("valorAula").value) || 0;
+      const obs    = document.getElementById("obsAula").value.trim();
+      const status = document.getElementById("statusAula").value;
+
+      let antiga = aulas.find(a => a.id === id);
+      const eraDada = antiga ? antiga.status === "Dada" : false;
+
+      const aulaObj = { id, data, hora, aluno, estilo, valor, obs, status };
+
+      if (isEdit) {
+        Object.assign(antiga, aulaObj);
+      } else {
+        aulas.push(aulaObj);
+      }
+
+      // controle de pacote quando vira/volta de "Dada"
+      const alunoRef = alunos.find(x=>x.nome===aluno);
+      if (alunoRef && alunoRef.tipo === "Pacote" && alunoRef.totalPacote > 0) {
+        if (!eraDada && status === "Dada") {
+          alunoRef.aulasFeitas = (alunoRef.aulasFeitas || 0) + 1;
+          if (alunoRef.totalPacote - alunoRef.aulasFeitas <= 2) {
+            alert(`⚠️ Atenção: ${alunoRef.nome} tem apenas ${alunoRef.totalPacote - alunoRef.aulasFeitas} aulas restantes no pacote.`);
+          }
+        }
+        if (eraDada && status !== "Dada" && (alunoRef.aulasFeitas||0) > 0) {
+          alunoRef.aulasFeitas -= 1;
+        }
+      }
+
+      salvar();
+      fecharModal("modalAula");
+      gerarCalendario();
+      atualizarListaMes();
+      atualizarListaAlunos();
+    }
+
+    function abrirEditarAula(aulaId){
+      const a = aulas.find(x=>x.id===aulaId);
+      if (!a) return;
+      document.getElementById("idAula").value = a.id;
+      document.getElementById("dataAula").value = a.data;
+      document.getElementById("horaAula").value = a.hora;
+      document.getElementById("alunoAula").value = a.aluno;
+      document.getElementById("estiloAula").value = a.estilo || "";
+      document.getElementById("valorAula").value = a.valor || "";
+      document.getElementById("obsAula").value = a.obs || "";
+      document.getElementById("statusAula").value = a.status || "Marcada";
+      document.getElementById("tituloModalAula").innerText = "Editar Aula";
+      const al = alunos.find(s=>s.nome===a.aluno);
+      document.getElementById("hintSemTelefone").classList.toggle("hidden", !!(al && al.telefone));
+      abrirModal('modalAula');
+    }
+
+    function excluirAula(aulaId){
+      if(!confirm("Excluir esta aula?")) return;
+      aulas = aulas.filter(a=>a.id !== aulaId);
+      salvar();
+      gerarCalendario();
+      atualizarListaMes();
+    }
+
+    // ======= WhatsApp =======
+    function lembrarAulaWhatsApp(){
+      const alunoNome = document.getElementById("alunoAula").value;
+      const al = alunos.find(a=>a.nome===alunoNome);
+      if (!al || !al.telefone) {
+        alert('Cadastre o telefone do aluno para enviar lembrete pelo WhatsApp.');
+        return;
+      }
+      const data = document.getElementById("dataAula").value;
+      const hora = document.getElementById("horaAula").value;
+      const quando = formatarDataHoraBR(data, hora);
+      const msg = encodeURIComponent(`Oi ${alunoNome}! Passando para lembrar da nossa aula em ${quando}. Qualquer dúvida me chama aqui. Abraço!`);
+      const fone = al.telefone.replace(/\D/g,'');
+      window.open(`https://wa.me/${fone}?text=${msg}`, '_blank');
+    }
+
+    function lembrarProximaAulaWhatsApp(){
+      const agora = new Date();
+      const proximas = aulas
+        .filter(a=> new Date(`${a.data}T${a.hora}:00`) >= agora && a.status !== "Cancelada")
+        .sort((x,y)=> new Date(`${x.data}T${x.hora}:00`) - new Date(`${y.data}T${y.hora}:00`));
+      if (!proximas.length) return alert('Nenhuma aula futura para lembrar.');
+      const a = proximas[0];
+      const al = alunos.find(s=>s.nome===a.aluno);
+      if (!al || !al.telefone) return alert('O aluno da próxima aula não tem telefone cadastrado.');
+      const quando = formatarDataHoraBR(a.data, a.hora);
+      const msg = encodeURIComponent(`Oi ${a.aluno}! Lembrando da nossa aula em ${quando}. Te espero!`);
+      const fone = al.telefone.replace(/\D/g,'');
+      window.open(`https://wa.me/${fone}?text=${msg}`, '_blank');
+    }
+
+    function whatsappDaAula(aulaId){
+      const a = aulas.find(x=>x.id===aulaId);
+      if(!a) return;
+      const al = alunos.find(s=>s.nome===a.aluno);
+      if (!al || !al.telefone) return alert('Telefone não cadastrado para este aluno.');
+      const quando = formatarDataHoraBR(a.data, a.hora);
+      const msg = encodeURIComponent(`Oi ${a.aluno}! Lembrando da nossa aula em ${quando} (${a.estilo||"Aula"}). Qualquer coisa me chama aqui. 👍`);
+      const fone = al.telefone.replace(/\D/g,'');
+      window.open(`https://wa.me/${fone}?text=${msg}`, '_blank');
+    }
+
+    // ======= Calendário =======
+    function gerarCalendario(){
+      const cal = document.getElementById("calendario");
+      cal.innerHTML = "";
+      const ano = dataAtual.getFullYear();
+      const mes = dataAtual.getMonth();
+      const primeiroDia = new Date(ano, mes, 1).getDay();
+      const diasNoMes = new Date(ano, mes+1, 0).getDate();
+      const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+      document.getElementById("mesAno").innerText = `${meses[mes]} ${ano}`;
+
+      const filtroA = document.getElementById("filtroAluno").value;
+      const filtroS = document.getElementById("filtroStatus").value;
+
+      for(let i=0;i<primeiroDia;i++){
+        cal.innerHTML += `<div class="h-28 border rounded bg-gray-50 dark:bg-gray-800 dark:border-gray-700"></div>`;
+      }
+      for(let d=1; d<=diasNoMes; d++){
+        const dataStr = `${ano}-${String(mes+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+        const aulasDoDia = aulas
+          .filter(a=>a.data===dataStr && (filtroA==="__todos__" || a.aluno===filtroA) && (filtroS==="__todos__" || a.status===filtroS))
+          .sort((x,y)=> new Date(`${x.data}T${x.hora}:00`) - new Date(`${y.data}T${y.hora}:00`));
+        let aulasHtml = "";
+        aulasDoDia.forEach(a=>{
+          let cor = "bg-blue-300"; // Marcada
+          if (a.status === "Dada") cor = "bg-green-300";
+          if (a.status === "Cancelada") cor = "bg-red-300";
+          aulasHtml += `
+            <button class="w-full text-left text-xs ${cor} rounded p-1 mt-1 hover:opacity-90"
+                    title="Clique para editar"
+                    onclick="abrirEditarAula('${a.id}')">
+              ${a.hora} • ${a.aluno}
+            </button>`;
+        });
+        cal.innerHTML += `
+          <div class="h-28 border rounded p-1 overflow-auto dark:bg-gray-800 dark:border-gray-700">
+            <div class="text-sm font-semibold">${d}</div>
+            ${aulasHtml}
+          </div>`;
+      }
+    }
+
+    function mudarMes(delta){
+      dataAtual.setMonth(dataAtual.getMonth()+delta);
+      gerarCalendario();
+      atualizarListaMes();
+      atualizarRelatorios();
+    }
+
+    // ======= Lista do Mês =======
+    function atualizarListaMes(){
+      const ano = dataAtual.getFullYear();
+      const mes = dataAtual.getMonth();
+      const filtroA = document.getElementById("filtroAluno").value;
+      const filtroS = document.getElementById("filtroStatus").value;
+
+      const lista = aulas
+        .filter(a=>{
+          const d = new Date(`${a.data}T${a.hora}:00`);
+          return d.getFullYear()===ano && d.getMonth()===mes &&
+                 (filtroA==="__todos__" || a.aluno===filtroA) &&
+                 (filtroS==="__todos__" || a.status===filtroS);
+        })
+        .sort((x,y)=> new Date(`${x.data}T${x.hora}:00`) - new Date(`${y.data}T${y.hora}:00`));
+
+      document.getElementById("contagemMes").textContent = `${lista.length} aula(s) neste mês`;
+
+      const container = document.getElementById("listaMes");
+      container.innerHTML = "";
+      if (!lista.length){
+        container.innerHTML = `<div class="py-6 text-center text-gray-500">Nenhuma aula encontrada.</div>`;
+        return;
+      }
+
+      lista.forEach(a=>{
+        let badge = "text-blue-700 bg-blue-100";
+        if (a.status === "Dada") badge = "text-green-700 bg-green-100";
+        if (a.status === "Cancelada") badge = "text-red-700 bg-red-100";
+        const linha = document.createElement("div");
+        linha.className = "py-2 flex flex-col md:flex-row md:items-center md:justify-between gap-2";
+        linha.innerHTML = `
+          <div class="text-sm">
+            <span class="font-medium">${a.data} ${a.hora}</span> •
+            <span>${a.aluno}</span> •
+            <span>${a.estilo || "Aula"}</span> •
+            <span>${toBRL(a.valor)}</span>
+            ${a.obs ? `<span class="text-gray-500">• ${a.obs}</span>` : ""}
+          </div>
+          <div class="flex gap-2">
+            <span class="px-2 py-0.5 rounded text-xs ${badge}">${a.status}</span>
+            <button onclick="whatsappDaAula('${a.id}')" class="px-2 py-1 rounded bg-green-600 text-white text-xs">WhatsApp</button>
+            <button onclick="abrirEditarAula('${a.id}')" class="px-2 py-1 rounded bg-yellow-500 text-white text-xs">Editar</button>
+            <button onclick="excluirAula('${a.id}')" class="px-2 py-1 rounded bg-red-600 text-white text-xs">Excluir</button>
+          </div>
+        `;
+        container.appendChild(linha);
+      });
+    }
+
+    function exportarCSVDoMes(){
+      const ano = dataAtual.getFullYear();
+      const mes = dataAtual.getMonth();
+      const filtroA = document.getElementById("filtroAluno").value;
+      const filtroS = document.getElementById("filtroStatus").value;
+      const lista = aulas
+        .filter(a=>{
+          const d = new Date(`${a.data}T${a.hora}:00`);
+          return d.getFullYear()===ano && d.getMonth()===mes &&
+                 (filtroA==="__todos__" || a.aluno===filtroA) &&
+                 (filtroS==="__todos__" || a.status===filtroS);
+        })
+        .sort((x,y)=> new Date(`${x.data}T${x.hora}:00`) - new Date(`${y.data}T${y.hora}:00`));
+
+      const rows = [["data","hora","aluno","estilo","valor","status","observacoes"]];
+      lista.forEach(a=> rows.push([a.data,a.hora,a.aluno,a.estilo||"",String(a.valor||0).replace('.',','),a.status,a.obs||""]));
+      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+      const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `aulas_${ano}_${String(mes+1).padStart(2,'0')}.csv`;
+      a.click();
+    }
+
+    // ======= Relatórios =======
+    function popularAnos(){
+      const anos = new Set(aulas.map(a => (new Date(`${a.data}T${a.hora||"00:00"}`)).getFullYear()));
+      const atual = (new Date()).getFullYear();
+      anos.add(atual);
+      const sel = document.getElementById("selectAno");
+      const arr = Array.from(anos).sort();
+      sel.innerHTML = "";
+      arr.forEach(y => sel.innerHTML += `<option value="${y}">${y}</option>`);
+      if(!arr.includes(atual)) sel.innerHTML += `<option selected value="${atual}">${atual}</option>`;
+      sel.value = String(atual);
+    }
+
+    function atualizarRelatorios(){
+      const anoSel = parseInt(document.getElementById("selectAno")?.value || (new Date()).getFullYear());
+      const mesesLabels = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
+      const aulasAno = aulas.filter(a => (new Date(`${a.data}T${a.hora||"00:00"}`)).getFullYear() === anoSel);
+      const qtdMarcadas = aulasAno.filter(a=>a.status==="Marcada").length;
+      const qtdDadas    = aulasAno.filter(a=>a.status==="Dada").length;
+      const qtdCanc     = aulasAno.filter(a=>a.status==="Cancelada").length;
+
+      const receitaMes = Array(12).fill(0);
+      const aulasMes   = Array(12).fill(0);
+      aulasAno.forEach(a=>{
+        const d = new Date(`${a.data}T${a.hora||"00:00"}`);
+        const m = d.getMonth();
+        if (a.status === "Dada") {
+          receitaMes[m] += (a.valor || 0);
+          aulasMes[m]   += 1;
+        }
+      });
+
+      document.getElementById("cardAulasDadas").innerText = qtdDadas;
+      document.getElementById("cardAulasCanceladas").innerText = qtdCanc;
+      document.getElementById("cardAlunosAtivos").innerText = alunos.filter(a=>a.status==="Ativo").length;
+      document.getElementById("cardReceitaAnual").innerText = toBRL(receitaMes.reduce((s,n)=>s+n,0));
+      const mesAgenda = dataAtual.getMonth();
+      document.getElementById("cardReceitaMensal").innerText = toBRL(receitaMes[mesAgenda] || 0);
+
+      const ctx1 = document.getElementById("chartAulasMes");
+      const ctx2 = document.getElementById("chartReceitaMes");
+      const ctx3 = document.getElementById("chartStatus");
+      if (cAulasMes) cAulasMes.destroy();
+      if (cReceitaMes) cReceitaMes.destroy();
+      if (cStatus) cStatus.destroy();
+
+      cAulasMes = new Chart(ctx1, { type: "bar", data: { labels: mesesLabels, datasets: [{ label: "Aulas Dadas", data: aulasMes }] }, options:{responsive:true}});
+      cReceitaMes = new Chart(ctx2, { type: "line", data: { labels: mesesLabels, datasets: [{ label: "Receita (R$)", data: receitaMes }] }, options:{responsive:true}});
+      cStatus = new Chart(ctx3, { type: "doughnut", data: { labels: ["Marcadas","Dadas","Canceladas"], datasets: [{ data: [qtdMarcadas, qtdDadas, qtdCanc] }] }, options:{responsive:true}});
+    }
+
+    // “olhinho”
+    const cacheOlho = {};
+    function toggleOlho(id){
+      const el = document.getElementById(id);
+      if (!cacheOlho[id]) cacheOlho[id] = el.innerText;
+      el.innerText = (el.innerText === "••••••") ? cacheOlho[id] : "••••••";
+    }
+
+    // ======= EVOLUÇÃO (com edição/exclusão) =======
+    function popularSelectNotas(){
+      const selNovo = document.getElementById("notaAluno");
+      const selFiltro = document.getElementById("filtroNotaAluno");
+      selNovo.innerHTML = `<option value="__todos__">Todos os alunos</option>`;
+      selFiltro.innerHTML = `<option value="__todos__">Todos os alunos</option>`;
+      alunos.forEach(a=>{
+        selNovo.innerHTML += `<option value="${a.nome}">${a.nome}</option>`;
+        selFiltro.innerHTML += `<option value="${a.nome}">${a.nome}</option>`;
+      });
+    }
+
+    function salvarNota(){
+      const aluno = document.getElementById("notaAluno").value;
+      const texto = (document.getElementById("notaTexto").value || "").trim();
+      if(!texto){ alert("Escreva alguma coisa na anotação."); return; }
+      const n = { id: novaId(), aluno, texto, data: new Date().toISOString() };
+      notas.unshift(n);
+      document.getElementById("notaTexto").value = "";
+      salvar();
+      listarNotas();
+    }
+
+    function editarNota(id){
+      const idx = notas.findIndex(n=>n.id===id);
+      if (idx < 0) return;
+      const atual = notas[idx];
+      const novo = prompt("Edite a anotação:", atual.texto);
+      if (novo===null) return;
+      const texto = novo.trim();
+      if (!texto){ alert("A anotação não pode ficar vazia."); return; }
+      notas[idx].texto = texto;
+      notas[idx].data = new Date().toISOString();
+      salvar();
+      listarNotas();
+    }
+
+    function excluirNota(id){
+      if(!confirm("Excluir esta anotação?")) return;
+      notas = notas.filter(n=>n.id!==id);
+      salvar();
+      listarNotas();
+    }
+
+    function listarNotas(){
+      const filtroAluno = document.getElementById("filtroNotaAluno").value;
+      const termo = (document.getElementById("buscaNotas").value || "").toLowerCase();
+      const lista = document.getElementById("listaNotas");
+      lista.innerHTML = "";
+      const filtradas = notas.filter(n=>{
+        const okAluno = (filtroAluno==="__todos__" || n.aluno===filtroAluno || n.aluno==="__todos__");
+        const okBusca = (!termo || n.texto.toLowerCase().includes(termo));
+        return okAluno && okBusca;
+      });
+      if(!filtradas.length){
+        lista.innerHTML = `<div class="bg-white p-4 rounded shadow text-gray-500 dark:bg-gray-800">Nenhuma anotação encontrada.</div>`;
+        return;
+      }
+      filtradas.forEach(n=>{
+        const d = new Date(n.data);
+        const dataBR = d.toLocaleString('pt-BR');
+        const item = document.createElement("div");
+        item.className = "bg-white p-3 rounded shadow flex flex-col gap-1 dark:bg-gray-800";
+        item.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="text-sm text-gray-500 dark:text-gray-300">${dataBR} • <b>${n.aluno==="__todos__"?"Todos os alunos":n.aluno}</b></div>
+            <div class="flex gap-2">
+              <button onclick="editarNota('${n.id}')" class="text-xs px-2 py-1 rounded bg-yellow-500 text-white">Editar</button>
+              <button onclick="excluirNota('${n.id}')" class="text-xs px-2 py-1 rounded bg-red-600 text-white">Excluir</button>
+            </div>
+          </div>
+          <div>${n.texto.replace(/\n/g,'<br/>')}</div>
+        `;
+        lista.appendChild(item);
+      });
+    }
+
+    // ======= Backup =======
+    function exportarBackup(){
+      const blob = new Blob([JSON.stringify({alunos, aulas, notas}, null, 2)], {type:'application/json'});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      a.download = `backup_gestao_${ts}.json`;
+      a.click();
+      localStorage.setItem('lastBackupAt', new Date().toISOString());
+    }
+    function importarBackup(e){
+      const file = e.target.files[0];
+      if(!file) return;
+      const r = new FileReader();
+      r.onload = ev => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          alunos = data.alunos || [];
+          aulas  = data.aulas  || [];
+          notas  = data.notas  || [];
+          aulas.forEach(a=>{ if(!a.id) a.id = novaId(); });
+          salvar();
+          atualizarListaAlunos();
+          gerarCalendario();
+          atualizarListaMes();
+          popularAnos();
+          atualizarRelatorios();
+          popularSelectNotas();
+          listarNotas();
+          alert("Backup importado com sucesso!");
+        } catch {
+          alert("Arquivo inválido.");
+        }
+      };
+      r.readAsText(file);
+      e.target.value = "";
+    }
+
+    // ======= Auto-Export ao sair (opcional) =======
+    function toggleAutoExport(checked){
+      localStorage.setItem('autoExportOnExit', checked ? '1' : '0');
+    }
+    function isAutoExportEnabled(){
+      return localStorage.getItem('autoExportOnExit') === '1';
+    }
+    function autoExportOnExit(){
+      if (!isAutoExportEnabled()) return;
+      exportarBackup();
+    }
+    window.addEventListener('pagehide', autoExportOnExit);
+    window.addEventListener('beforeunload', (e) => {
+      if (isAutoExportEnabled()) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
+
+    // ======= Init =======
+    aulas.forEach(a=>{ if(!a.id) a.id = novaId(); });
+    salvar();
+    atualizarListaAlunos();
+    mostrarSecao("agenda");
+  </script>
+
+  <!-- Registro do Service Worker (PWA) -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {
+          /* Se o sw.js ainda não existir, tudo bem */
+        });
+      });
+    }
+  </script>
+
+</body>
+</html>
